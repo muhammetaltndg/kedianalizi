@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kedi Bakışı Analiz Sistemi | AI Cat Eye Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        .cat-gradient {
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+        }
+
+        .drop-zone {
+            border: 2px dashed #cbd5e1;
+            transition: all 0.3s ease;
+        }
+
+        .drop-zone.active {
+            border-color: #6366f1;
+            background-color: #f1f5f9;
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #6366f1;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Proje dışı (GitHub) kullanım için API Ayar Paneli */
+        #apiSettings {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- GitHub Pages'da manuel API girişi gerekirse diye gizli ayar butonu -->
+    <div id="apiSettings" class="bg-white p-4 rounded-xl shadow-2xl border border-gray-200 w-72">
+        <h4 class="text-sm font-bold mb-2">Gemini API Key</h4>
+        <input type="password" id="manualApiKey" placeholder="API Anahtarınızı Girin" class="w-full text-xs p-2 border rounded mb-2">
+        <button onclick="saveApiKey()" class="w-full bg-indigo-600 text-white text-xs py-1 rounded">Kaydet</button>
+    </div>
+    <button onclick="toggleApiSettings()" class="fixed top-4 right-4 bg-white/20 hover:bg-white/40 text-white p-2 rounded-full z-[101] backdrop-blur-sm transition">
+        <i class="fas fa-cog"></i>
+    </button>
+
+    <!-- Header -->
+    <header class="cat-gradient text-white py-12 px-4 shadow-lg">
+        <div class="max-w-4xl mx-auto text-center">
+            <h1 class="text-4xl md:text-5xl font-extrabold mb-4">
+                <i class="fas fa-cat mr-3"></i>Kedi Bakışı Analizi
+            </h1>
+            <p class="text-indigo-100 text-lg opacity-90 max-w-2xl mx-auto">
+                Yapay zeka teknolojisi ile kedinizin göz bebeklerinden ve bakışlarından o anki ruh halini keşfedin.
+            </p>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-4xl w-full mx-auto p-4 md:p-8 -mt-8">
+        <!-- Main Container -->
+        <div class="bg-white rounded-3xl shadow-2xl p-6 md:p-10 border border-gray-100 overflow-hidden">
+            
+            <!-- Upload Section -->
+            <div id="uploadSection" class="space-y-6">
+                <div id="dropZone" class="drop-zone rounded-2xl p-12 text-center cursor-pointer hover:bg-gray-50 transition-all border-indigo-100">
+                    <input type="file" id="fileInput" class="hidden" accept="image/*">
+                    <div class="space-y-6">
+                        <div class="relative inline-block">
+                            <div class="text-6xl text-indigo-400">
+                                <i class="fas fa-camera-retro"></i>
+                            </div>
+                            <div class="absolute -bottom-2 -right-2 bg-indigo-600 text-white p-2 rounded-full text-xs">
+                                <i class="fas fa-plus"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-2xl font-bold text-gray-800">Fotoğraf Yükle</p>
+                            <p class="text-gray-500 mt-2">Sürükleyip bırakın veya cihazınızdan seçin</p>
+                        </div>
+                        <button class="bg-indigo-600 text-white px-8 py-3 rounded-xl font-semibold hover:bg-indigo-700 transition shadow-lg shadow-indigo-200">
+                            Dosya Seç
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Preview & Analysis Section -->
+            <div id="previewSection" class="hidden space-y-8 fade-in">
+                <div class="flex flex-col md:flex-row gap-10">
+                    <!-- Image Preview -->
+                    <div class="w-full md:w-1/2">
+                        <div class="relative rounded-2xl overflow-hidden shadow-2xl group">
+                            <img id="imagePreview" src="#" alt="Önizleme" class="w-full h-auto object-cover max-h-[500px]">
+                            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <button id="resetBtn" class="bg-white text-red-600 px-4 py-2 rounded-lg font-bold shadow-xl hover:scale-105 transition">
+                                    <i class="fas fa-trash-alt mr-2"></i> Fotoğrafı Değiştir
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Analysis Controls & Results -->
+                    <div class="w-full md:w-1/2 space-y-6">
+                        <div id="statusControl">
+                            <button id="analyzeBtn" class="w-full cat-gradient text-white py-5 rounded-2xl font-bold text-xl shadow-xl hover:opacity-90 transition transform hover:-translate-y-1 active:scale-95 flex items-center justify-center">
+                                <i class="fas fa-sparkles mr-3"></i> Yapay Zeka ile Analiz Et
+                            </button>
+                        </div>
+
+                        <div id="loadingState" class="hidden flex flex-col items-center justify-center py-12 space-y-4">
+                            <div class="loader"></div>
+                            <div class="text-center">
+                                <p class="text-indigo-600 font-bold text-lg animate-pulse">Gözler İnceleniyor...</p>
+                                <p class="text-sm text-gray-400">Piksel bazlı duygu analizi yapılıyor</p>
+                            </div>
+                        </div>
+
+                        <!-- Result Display -->
+                        <div id="resultBox" class="hidden bg-indigo-50 rounded-2xl p-8 border border-indigo-100 fade-in relative overflow-hidden">
+                            <div class="absolute top-0 right-0 p-4 opacity-10">
+                                <i class="fas fa-quote-right text-6xl text-indigo-900"></i>
+                            </div>
+                            <h3 class="text-indigo-900 font-bold text-2xl mb-6 flex items-center">
+                                <span class="bg-indigo-600 text-white p-2 rounded-lg mr-3">
+                                    <i class="fas fa-brain text-sm"></i>
+                                </span>
+                                Analiz Raporu
+                            </h3>
+                            <div id="analysisContent" class="text-gray-700 leading-relaxed space-y-4 text-lg">
+                                <!-- AI result will be injected here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Guide Section -->
+        <div class="mt-12">
+            <h2 class="text-center text-2xl font-bold text-gray-800 mb-8">Kedi Bakış Rehberi</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-4 text-xl">
+                        <i class="fas fa-expand"></i>
+                    </div>
+                    <h4 class="font-bold text-gray-800 mb-2">Avlanma ve Heyecan</h4>
+                    <p class="text-sm text-gray-500">Göz bebekleri sonuna kadar açılmışsa, kedi bir şeye odaklanmış veya aşırı heyecanlanmış demektir.</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4 text-xl">
+                        <i class="fas fa-compress"></i>
+                    </div>
+                    <h4 class="font-bold text-gray-800 mb-2">Sakinlik ve Odak</h4>
+                    <p class="text-sm text-gray-500">Dikey ve dar göz bebekleri, yoğun bir ışığı veya sakin ancak odaklanmış bir ruh halini yansıtır.</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center mb-4 text-xl">
+                        <i class="fas fa-heart"></i>
+                    </div>
+                    <h4 class="font-bold text-gray-800 mb-2">Güven ve Sevgi</h4>
+                    <p class="text-sm text-gray-500">Kısık gözler veya yavaşça göz kırpma "Seni seviyorum" ve "Sana güveniyorum" demektir.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="py-10 text-center text-gray-400 text-sm">
+        <div class="flex justify-center space-x-4 mb-4">
+            <a href="#" class="hover:text-indigo-600 transition"><i class="fab fa-github text-xl"></i></a>
+            <a href="#" class="hover:text-indigo-600 transition"><i class="fas fa-globe text-xl"></i></a>
+        </div>
+        <p>© 2025 AI Cat Eye Analyzer | Kedilerin Dili Projesi</p>
+    </footer>
+
+    <script>
+        // Default API key (Can be set via environment or manual input)
+        let apiKey = ""; 
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadSection = document.getElementById('uploadSection');
+        const previewSection = document.getElementById('previewSection');
+        const imagePreview = document.getElementById('imagePreview');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const loadingState = document.getElementById('loadingState');
+        const resultBox = document.getElementById('resultBox');
+        const analysisContent = document.getElementById('analysisContent');
+        const resetBtn = document.getElementById('resetBtn');
+        const statusControl = document.getElementById('statusControl');
+        const apiPanel = document.getElementById('apiSettings');
+        const manualKeyInput = document.getElementById('manualApiKey');
+
+        let currentBase64 = null;
+
+        // Settings functions for external use
+        function toggleApiSettings() {
+            apiPanel.style.display = apiPanel.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function saveApiKey() {
+            apiKey = manualKeyInput.value.trim();
+            if(apiKey) {
+                alert("API Anahtarı başarıyla güncellendi!");
+                apiPanel.style.display = 'none';
+            }
+        }
+
+        // File handling
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => processFile(e.target.files[0]));
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('active');
+        });
+
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active'));
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('active');
+            processFile(e.dataTransfer.files[0]);
+        });
+
+        resetBtn.addEventListener('click', () => {
+            uploadSection.classList.remove('hidden');
+            previewSection.classList.add('hidden');
+            resultBox.classList.add('hidden');
+            fileInput.value = '';
+            currentBase64 = null;
+        });
+
+        analyzeBtn.addEventListener('click', startAnalysis);
+
+        function processFile(file) {
+            if (!file || !file.type.startsWith('image/')) {
+                showModal("Lütfen geçerli bir görsel yükleyin.");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imagePreview.src = e.target.result;
+                currentBase64 = e.target.result.split(',')[1];
+                uploadSection.classList.add('hidden');
+                previewSection.classList.remove('hidden');
+                resultBox.classList.add('hidden');
+                statusControl.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function startAnalysis() {
+            if (!currentBase64) return;
+            
+            // Check if API key is provided for external environments
+            if(!apiKey && typeof __initial_auth_token === 'undefined') {
+                toggleApiSettings();
+                showModal("Analiz için bir Gemini API anahtarı gerekiyor. Lütfen ayarlar panelinden girin.");
+                return;
+            }
+
+            statusControl.classList.add('hidden');
+            loadingState.classList.remove('hidden');
+            resultBox.classList.add('hidden');
+
+            const systemPrompt = "Uzman bir kedi davranış bilimcisi olarak, görseldeki kedinin özellikle gözlerini ve yüz ifadesini analiz et. Göz bebeklerinin büyüklüğü, göz kapaklarının açıklığı ve kulakların duruşuna bakarak o anki duygusal durumunu açıkla. Yanıtın profesyonel, Türkçe ve açıklayıcı olsun. Şu başlıkları kullan: 🔍 Gözlem, 🧠 Duygusal Durum, 💡 Tavsiye.";
+
+            try {
+                const response = await callGeminiAPI(systemPrompt, currentBase64);
+                displayResult(response);
+            } catch (error) {
+                displayResult("❌ Analiz Hatası: API bağlantısı sağlanamadı. Lütfen anahtarınızı kontrol edin.");
+            } finally {
+                loadingState.classList.add('hidden');
+            }
+        }
+
+        async function callGeminiAPI(prompt, base64Image) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            const payload = {
+                contents: [{
+                    parts: [
+                        { text: prompt },
+                        { inlineData: { mimeType: "image/png", data: base64Image } }
+                    ]
+                }]
+            };
+
+            let delay = 1000;
+            for (let i = 0; i < 5; i++) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        return data.candidates?.[0]?.content?.parts?.[0]?.text || "Sonuç bulunamadı.";
+                    }
+                } catch (e) {}
+                await new Promise(r => setTimeout(r, delay));
+                delay *= 2;
+            }
+            throw new Error("API Limit");
+        }
+
+        function displayResult(text) {
+            const formatted = text
+                .replace(/\*\*(.*?)\*\*/g, '<strong class="text-indigo-900">$1</strong>')
+                .replace(/\n/g, '<br>');
+            
+            analysisContent.innerHTML = formatted;
+            resultBox.classList.remove('hidden');
+            statusControl.classList.remove('hidden');
+            resultBox.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function showModal(msg) {
+            const div = document.createElement('div');
+            div.className = "fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4 backdrop-blur-sm";
+            div.innerHTML = `
+                <div class="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl scale-in text-center">
+                    <div class="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <p class="text-gray-800 font-medium mb-6 leading-relaxed">${msg}</p>
+                    <button onclick="this.parentElement.parentElement.remove()" class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition">Anladım</button>
+                </div>
+            `;
+            document.body.appendChild(div);
+        }
+    </script>
+</body>
+</html>
